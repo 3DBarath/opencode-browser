@@ -12,7 +12,7 @@
       font-size: 13px;
     }
 
-    /* ── HEADER ── */
+    /* HEADER */
     .header {
       display: flex;
       align-items: center;
@@ -32,7 +32,7 @@
       color: #8b949e;
     }
 
-    /* ── STATUS ROW ── */
+    /* STATUS */
     .status-row {
       display: flex;
       align-items: center;
@@ -62,7 +62,7 @@
     }
     #status-text.connected { color: #e3863a; }
 
-    /* ── TOGGLE SWITCH ── */
+    /* TOGGLE SWITCH */
     .toggle-wrap {
       display: flex;
       align-items: center;
@@ -99,7 +99,7 @@
     .toggle input:checked + .slider { background: #e3863a; }
     .toggle input:checked + .slider:before { transform: translateX(18px); }
 
-    /* ── ENDPOINT ── */
+    /* ENDPOINT */
     .field { margin-bottom: 12px; }
     label { display: block; font-size: 11px; margin-bottom: 4px; color: #8b949e; }
     input {
@@ -117,7 +117,7 @@
       box-shadow: 0 0 0 3px rgba(227,134,58,0.2);
     }
 
-    /* ── SAVE BTN ── */
+    /* SAVE */
     button#save-btn {
       width: 100%;
       background: #21262d;
@@ -148,7 +148,7 @@
   <div class="header">
     <img src="icon.svg" alt="icon">
     <h3>Opencode Brower</h3>
-    <span class="version-badge">0.0.5</span>
+    <span class="version-badge">0.0.6</span>
   </div>
 
   <div class="status-row">
@@ -169,7 +169,7 @@
   </div>
   <button id="save-btn">Save Endpoint</button>
 
-  <div class="footer">opencode 0.0.5 &middot; <span id="ws-url">ws://localhost:3002</span></div>
+  <div class="footer">opencode 0.0.6 &middot; <span id="ws-url">ws://localhost:3002</span></div>
 
   <script src="popup.js"></script>
 </body>

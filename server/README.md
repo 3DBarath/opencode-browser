@@ -5,7 +5,7 @@
 
 > OpenCode Browser MCP — Chrome automation plugin for [OpenCode](https://opencode.ai) via WebSocket + Chrome Extension.
 
-Gives AI agents **105+ tools** covering tabs, CDP debugging, network interception, visual clicking, session management, accessibility, advanced mouse/keyboard control, testing & mocking, profiling, and more.
+Gives AI agents **165+ tools** covering tabs, CDP debugging, network interception, visual clicking, session management, accessibility, advanced mouse/keyboard control, testing & mocking, profiling, stealth/anti-fingerprinting, proxy management, form automation, lighthouse audits, screencast recording, and more.
 
 ---
 
@@ -398,6 +398,102 @@ All tools are prefixed with `chrome_`. Call `chrome_get_tool_graph` with a plain
 | `chrome_hide_element` | Hide or show element |
 | `chrome_dom_set_attribute` | Set DOM attribute via CDP |
 | `chrome_dom_remove_node` | Remove DOM node |
+
+### Stealth & Anti-fingerprinting
+
+| Tool | Description |
+|------|-------------|
+| `chrome_stealth_enable` | Enable anti-fingerprint spoofs (webdriver, canvas, webgl, audio, etc.) |
+| `chrome_stealth_disable` | Disable all stealth spoofs on a tab |
+| `chrome_stealth_status` | Get active stealth flags and seed |
+
+### Proxy & Network Identity
+
+| Tool | Description |
+|------|-------------|
+| `chrome_set_proxy` | Set browser proxy (direct, fixed_servers, pac_script) |
+| `chrome_clear_proxy` | Clear proxy to direct connection |
+| `chrome_get_proxy` | Get current proxy config |
+| `chrome_set_webrtc_policy` | Prevent WebRTC IP leak |
+| `chrome_get_webrtc_policy` | Get WebRTC policy |
+
+### Dialog & Form Automation
+
+| Tool | Description |
+|------|-------------|
+| `chrome_handle_dialog` | Handle JavaScript dialog (alert, confirm, prompt) |
+| `chrome_fill_form` | Fill multiple form fields in one call |
+| `chrome_check` | Check a checkbox |
+| `chrome_uncheck` | Uncheck a checkbox |
+| `chrome_wait_for_text` | Wait for text to appear on page |
+| `chrome_verify_element_visible` | Verify element is visible |
+| `chrome_verify_text_visible` | Verify text is visible on page |
+| `chrome_verify_value` | Verify input value matches expected |
+| `chrome_generate_locator` | Generate Playwright locator string |
+
+### Lighthouse & Performance
+
+| Tool | Description |
+|------|-------------|
+| `chrome_lighthouse_audit` | Heuristic audit (accessibility, SEO, best-practices) |
+| `chrome_performance_insight` | Performance insights with Core Web Vitals |
+
+### Screencast & Device Emulation
+
+| Tool | Description |
+|------|-------------|
+| `chrome_screencast_start` | Start screencast recording |
+| `chrome_screencast_stop` | Stop screencast and get frame count |
+| `chrome_resize_page` | Resize page viewport |
+| `chrome_emulate` | Unified device emulation (viewport, UA, locale, timezone, colorScheme) |
+
+### Advanced Mouse Control
+
+| Tool | Description |
+|------|-------------|
+| `chrome_mouse_move` | Move mouse to coordinates |
+| `chrome_mouse_down` | Press mouse button |
+| `chrome_mouse_up` | Release mouse button |
+| `chrome_mouse_wheel` | Scroll mouse wheel |
+| `chrome_click_at` | Click at specific coordinates |
+
+### Heap & Memory Analysis
+
+| Tool | Description |
+|------|-------------|
+| `chrome_heap_summary` | Get heap summary |
+| `chrome_heap_query_objects` | Query heap objects by class name |
+
+### Storage & Network Completeness
+
+| Tool | Description |
+|------|-------------|
+| `chrome_cookie_clear` | Clear all cookies for URL |
+| `chrome_localstorage_list` | List localStorage keys |
+| `chrome_localstorage_delete` | Delete localStorage key |
+| `chrome_sessionstorage_set` | Set sessionStorage value |
+| `chrome_sessionstorage_get` | Get sessionStorage value |
+| `chrome_sessionstorage_delete` | Delete sessionStorage key |
+| `chrome_sessionstorage_clear` | Clear sessionStorage |
+| `chrome_route_list` | List mock routes |
+| `chrome_unroute` | Remove mock route |
+| `chrome_network_state_set` | Set network offline/online state |
+| `chrome_get_network_request` | Get network request by ID |
+| `chrome_indexeddb_list` | List IndexedDB databases |
+| `chrome_indexeddb_clear` | Clear IndexedDB object store |
+
+### Extension & PWA Management
+
+| Tool | Description |
+|------|-------------|
+| `chrome_list_extensions` | List installed extensions |
+| `chrome_enable_extension` | Enable extension by ID |
+| `chrome_disable_extension` | Disable extension by ID |
+| `chrome_reload_extension` | Reload extension |
+| `chrome_trigger_extension_action` | Trigger extension action |
+| `chrome_pwa_check` | Check PWA installability |
+| `chrome_list_webmcp_tools` | List WebMCP tools on page |
+| `chrome_execute_webmcp_tool` | Execute WebMCP tool |
 
 ### Miscellaneous
 

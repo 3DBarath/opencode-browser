@@ -4,10 +4,10 @@
 [![extension version](https://img.shields.io/badge/extension-0.0.5-blue)](https://github.com/mytai20100/opencode-browser)
 [![language](https://img.shields.io/badge/language-JavaScript-yellow)](https://github.com/mytai20100/opencode-browser)
 [![license](https://img.shields.io/badge/license-MIT-green)](./server/LICENSE)
-[![Package npm](https://github.com/Mytai20100/opencode-brower/actions/workflows/build.yml/badge.svg?event=status)](https://github.com/Mytai20100/opencode-brower/actions/workflows/build.yml)
+[![Package npm](https://github.com/Mytai20100/opencode-browser/actions/workflows/build.yml/badge.svg)](https://github.com/Mytai20100/opencode-browser/actions/workflows/build.yml)
 [![Build](https://github.com/Mytai20100/opencode-brower/actions/workflows/build-e.yml/badge.svg)](https://github.com/Mytai20100/opencode-brower/actions/workflows/build-e.yml)
 
-Chrome automation plugin for [OpenCode](https://opencode.ai) via WebSocket and Chrome Extension. Gives AI agents **105+ tools** covering tabs, CDP debugging, network interception, visual clicking, session management, accessibility, advanced mouse/keyboard control, testing & mocking, profiling, and more.
+Chrome automation plugin for [OpenCode](https://opencode.ai) via WebSocket and Chrome Extension. Gives AI agents **165+ tools** covering tabs, CDP debugging, network interception, visual clicking, session management, accessibility, advanced mouse/keyboard control, testing & mocking, profiling, stealth/anti-fingerprinting, proxy management, form automation, lighthouse audits, screencast recording, and more.
 
 ## How it works
 
@@ -106,7 +106,7 @@ For the extension, load the `extension/` folder from the cloned repo the same wa
 
 ## Prompt tips
 
-A few patterns that get the most out of the **105+ available tools**:
+A few patterns that get the most out of the **165+ available tools**:
 
 **Always start with the tool graph.** Before any multi-step task, ask the agent to call `chrome_get_tool_graph` with a plain description of the goal. This gives it an ordered execution plan and tells it which tools to skip, saving unnecessary calls.
 
@@ -427,6 +427,102 @@ These tools require calling `chrome_debug_attach` first.
 | `chrome_dom_set_attribute` | Set DOM attribute via CDP |
 | `chrome_dom_remove_node` | Remove DOM node |
 
+### Stealth & Anti-fingerprinting
+
+| Tool | Description |
+|------|-------------|
+| `chrome_stealth_enable` | Enable anti-fingerprint spoofs (webdriver, canvas, webgl, audio, etc.) |
+| `chrome_stealth_disable` | Disable all stealth spoofs on a tab |
+| `chrome_stealth_status` | Get active stealth flags and seed |
+
+### Proxy & Network Identity
+
+| Tool | Description |
+|------|-------------|
+| `chrome_set_proxy` | Set browser proxy (direct, fixed_servers, pac_script) |
+| `chrome_clear_proxy` | Clear proxy to direct connection |
+| `chrome_get_proxy` | Get current proxy config |
+| `chrome_set_webrtc_policy` | Prevent WebRTC IP leak |
+| `chrome_get_webrtc_policy` | Get WebRTC policy |
+
+### Dialog & Form Automation
+
+| Tool | Description |
+|------|-------------|
+| `chrome_handle_dialog` | Handle JavaScript dialog (alert, confirm, prompt) |
+| `chrome_fill_form` | Fill multiple form fields in one call |
+| `chrome_check` | Check a checkbox |
+| `chrome_uncheck` | Uncheck a checkbox |
+| `chrome_wait_for_text` | Wait for text to appear on page |
+| `chrome_verify_element_visible` | Verify element is visible |
+| `chrome_verify_text_visible` | Verify text is visible on page |
+| `chrome_verify_value` | Verify input value matches expected |
+| `chrome_generate_locator` | Generate Playwright locator string |
+
+### Lighthouse & Performance
+
+| Tool | Description |
+|------|-------------|
+| `chrome_lighthouse_audit` | Heuristic audit (accessibility, SEO, best-practices) |
+| `chrome_performance_insight` | Performance insights with Core Web Vitals |
+
+### Screencast & Device Emulation
+
+| Tool | Description |
+|------|-------------|
+| `chrome_screencast_start` | Start screencast recording |
+| `chrome_screencast_stop` | Stop screencast and get frame count |
+| `chrome_resize_page` | Resize page viewport |
+| `chrome_emulate` | Unified device emulation (viewport, UA, locale, timezone, colorScheme) |
+
+### Advanced Mouse Control
+
+| Tool | Description |
+|------|-------------|
+| `chrome_mouse_move` | Move mouse to coordinates |
+| `chrome_mouse_down` | Press mouse button |
+| `chrome_mouse_up` | Release mouse button |
+| `chrome_mouse_wheel` | Scroll mouse wheel |
+| `chrome_click_at` | Click at specific coordinates |
+
+### Heap & Memory Analysis
+
+| Tool | Description |
+|------|-------------|
+| `chrome_heap_summary` | Get heap summary |
+| `chrome_heap_query_objects` | Query heap objects by class name |
+
+### Storage & Network Completeness
+
+| Tool | Description |
+|------|-------------|
+| `chrome_cookie_clear` | Clear all cookies for URL |
+| `chrome_localstorage_list` | List localStorage keys |
+| `chrome_localstorage_delete` | Delete localStorage key |
+| `chrome_sessionstorage_set` | Set sessionStorage value |
+| `chrome_sessionstorage_get` | Get sessionStorage value |
+| `chrome_sessionstorage_delete` | Delete sessionStorage key |
+| `chrome_sessionstorage_clear` | Clear sessionStorage |
+| `chrome_route_list` | List mock routes |
+| `chrome_unroute` | Remove mock route |
+| `chrome_network_state_set` | Set network offline/online state |
+| `chrome_get_network_request` | Get network request by ID |
+| `chrome_indexeddb_list` | List IndexedDB databases |
+| `chrome_indexeddb_clear` | Clear IndexedDB object store |
+
+### Extension & PWA Management
+
+| Tool | Description |
+|------|-------------|
+| `chrome_list_extensions` | List installed extensions |
+| `chrome_enable_extension` | Enable extension by ID |
+| `chrome_disable_extension` | Disable extension by ID |
+| `chrome_reload_extension` | Reload extension |
+| `chrome_trigger_extension_action` | Trigger extension action |
+| `chrome_pwa_check` | Check PWA installability |
+| `chrome_list_webmcp_tools` | List WebMCP tools on page |
+| `chrome_execute_webmcp_tool` | Execute WebMCP tool |
+
 ## Tool graph
 
 Before starting any multi-step task, call `chrome_get_tool_graph` with a plain-text description of what you want to accomplish. It returns a ranked list of recommended tools, their cost (`low` / `medium` / `high`), prerequisites, suggested next steps, and tools to avoid. This is especially useful for agents that might otherwise make redundant or expensive calls.
@@ -518,6 +614,29 @@ Contributions are welcome.
 
 See [CHANGELOG-MCP.md](CHANGELOG-MCP.md) for a detailed list of changes.
 
+### v0.0.6
+
+  - Stealth & anti-fingerprinting: stealth_enable, stealth_disable, stealth_status (webdriver, canvas, webgl, audio, fonts, codecs, permissions spoofing)
+  - Proxy management: set_proxy, clear_proxy, get_proxy, set_webrtc_policy, get_webrtc_policy
+  - Dialog & form automation: handle_dialog, fill_form, check, uncheck, wait_for_text
+  - Assertion tools: verify_element_visible, verify_text_visible, verify_value, generate_locator
+  - Lighthouse & performance: lighthouse_audit (heuristic), performance_insight (Core Web Vitals)
+  - Screencast: screencast_start, screencast_stop
+  - Device emulation: resize_page, emulate (unified viewport, UA, locale, timezone, colorScheme)
+  - Advanced mouse: mouse_move, mouse_down, mouse_up, mouse_wheel, click_at
+  - Heap analysis: heap_summary, heap_query_objects
+  - Storage completeness: cookie_clear, localstorage_list, localstorage_delete, sessionstorage_set/get/delete/clear
+  - Network tools: route_list, unroute, network_state_set, get_network_request
+  - IndexedDB: indexeddb_list, indexeddb_clear
+  - Extension management: list_extensions, enable_extension, disable_extension, reload_extension, trigger_extension_action
+  - PWA & WebMCP: pwa_check, list_webmcp_tools, execute_webmcp_tool
+  - Bugfixes: single global debugger event listener (fixes memory leak), screenshot/PDF return proper image/resource types
+### v0.0.5
+- Fix switch statement syntax error that prevented the service worker from loading .Fromt [Hcone-Eyne](https://github.com/Hcone-Eyne)  
+### v0.0.4
+- Fixed cannot get tool in mcp server 
+### v0.0.3
+- Change something
 ### v0.0.2
 
   - Advanced mouse: double_click, right_click, middle_click, drag_drop

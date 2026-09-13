@@ -15,8 +15,6 @@ const wss = new WebSocketServer({
   verifyClient: () => true,
 });
 
-// CRITICAL: Without this handler, EADDRINUSE crashes the process before
-// stdio transport starts, causing opencode to report "cannot get tools".
 wss.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EADDRINUSE") {
     console.error(
@@ -1889,6 +1887,652 @@ const TOOLS = [
       },
       required: ["selector"],
     },
+  },
+
+  {
+    name: "chrome_stealth_enable",
+    description: "Enable anti-fingerprint stealth spoofs on a tab via MAIN-world injection and CDP. Each flag toggles one vector independently.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+        webdriver: { type: "boolean" },
+        chromeRuntime: { type: "boolean" },
+        plugins: { type: "boolean" },
+        languages: { type: "boolean", default: true },
+        hardwareConcurrency: { type: "number" },
+        deviceMemory: { type: "number" },
+        vendor: { type: "string" },
+        platform: { type: "string" },
+        canvasNoise: { type: "boolean" },
+        webglVendor: { type: "boolean" },
+        webglRenderer: { type: "string" },
+        webglVendorString: { type: "string" },
+        audioNoise: { type: "boolean" },
+        fontSpoof: { type: "boolean" },
+        codecs: { type: "boolean" },
+        permissions: { type: "boolean" },
+        outerSize: { type: "boolean" },
+        seed: { type: "number" },
+        persist: { type: "boolean", default: true },
+      },
+    },
+  },
+  {
+    name: "chrome_stealth_disable",
+    description: "Disable and remove all stealth spoofs on a tab",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_stealth_status",
+    description: "Get active stealth flags and seed for a tab",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+      },
+    },
+  },
+
+  {
+    name: "chrome_set_proxy",
+    description: "Set browser proxy",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mode: { type: "string", enum: ["direct", "fixed_servers", "pac_script"] },
+        proxyForHttp: { type: "string" },
+        proxyForHttps: { type: "string" },
+        proxyForFtp: { type: "string" },
+        bypassList: { type: "array", items: { type: "string" } },
+        pacUrl: { type: "string" },
+        pacScript: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "chrome_clear_proxy",
+    description: "Clear proxy to direct",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "chrome_get_proxy",
+    description: "Get proxy config",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "chrome_set_webrtc_policy",
+    description: "Prevent WebRTC IP leak",
+    inputSchema: {
+      type: "object",
+      properties: {
+        policy: { type: "string", enum: ["default", "disable_non_proxied_udp", "proxy_only"], description: "WebRTC policy" },
+      },
+      required: ["policy"],
+    },
+  },
+  {
+    name: "chrome_get_webrtc_policy",
+    description: "Get WebRTC policy",
+    inputSchema: { type: "object", properties: {} },
+  },
+
+  {
+    name: "chrome_handle_dialog",
+    description: "Handle JavaScript dialog (alert, confirm, prompt)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["accept", "dismiss"] },
+        promptText: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["action"],
+    },
+  },
+  {
+    name: "chrome_fill_form",
+    description: "Fill multiple form fields in one call",
+    inputSchema: {
+      type: "object",
+      properties: {
+        fields: { type: "array", items: { type: "object", properties: { selector: { type: "string" }, value: { type: "string" } } } },
+        submitSelector: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "chrome_check",
+    description: "Check a checkbox",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["selector"],
+    },
+  },
+  {
+    name: "chrome_uncheck",
+    description: "Uncheck a checkbox",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["selector"],
+    },
+  },
+  {
+    name: "chrome_wait_for_text",
+    description: "Wait for text to appear on page",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        timeout: { type: "number", default: 5000 },
+        exact: { type: "boolean" },
+        tabId: { type: "number" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "chrome_verify_element_visible",
+    description: "Verify element is visible",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["selector"],
+    },
+  },
+  {
+    name: "chrome_verify_text_visible",
+    description: "Verify text is visible on page",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "chrome_verify_value",
+    description: "Verify input value matches expected",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string" },
+        expected: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["selector", "expected"],
+    },
+  },
+  {
+    name: "chrome_generate_locator",
+    description: "Generate Playwright locator string for element",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["selector"],
+    },
+  },
+
+  {
+    name: "chrome_lighthouse_audit",
+    description: "Heuristic audit, not full Google Lighthouse. Returns accessibility, SEO, best-practices scores.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+        device: { type: "string", enum: ["desktop", "mobile"], default: "desktop" },
+        categories: { type: "array", items: { type: "string" }, default: ["accessibility", "seo", "best-practices"] },
+      },
+    },
+  },
+  {
+    name: "chrome_performance_insight",
+    description: "Get performance insights including Core Web Vitals estimates",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+      },
+    },
+  },
+
+  {
+    name: "chrome_screencast_start",
+    description: "Start screencast recording",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+        quality: { type: "number", default: 80 },
+        maxFrames: { type: "number", default: 60 },
+      },
+    },
+  },
+  {
+    name: "chrome_screencast_stop",
+    description: "Stop screencast recording",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_resize_page",
+    description: "Resize page viewport",
+    inputSchema: {
+      type: "object",
+      properties: {
+        width: { type: "number" },
+        height: { type: "number" },
+        tabId: { type: "number" },
+      },
+      required: ["width", "height"],
+    },
+  },
+  {
+    name: "chrome_emulate",
+    description: "Unified device emulation",
+    inputSchema: {
+      type: "object",
+      properties: {
+        viewportWidth: { type: "number" },
+        viewportHeight: { type: "number" },
+        deviceScaleFactor: { type: "number" },
+        mobile: { type: "boolean" },
+        userAgent: { type: "string" },
+        locale: { type: "string" },
+        timezone: { type: "string" },
+        colorScheme: { type: "string", enum: ["light", "dark"] },
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_mouse_move",
+    description: "Move mouse to coordinates",
+    inputSchema: {
+      type: "object",
+      properties: {
+        x: { type: "number" },
+        y: { type: "number" },
+        tabId: { type: "number" },
+      },
+      required: ["x", "y"],
+    },
+  },
+  {
+    name: "chrome_mouse_down",
+    description: "Press mouse button",
+    inputSchema: {
+      type: "object",
+      properties: {
+        button: { type: "string", enum: ["left", "right", "middle"], default: "left" },
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_mouse_up",
+    description: "Release mouse button",
+    inputSchema: {
+      type: "object",
+      properties: {
+        button: { type: "string", enum: ["left", "right", "middle"], default: "left" },
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_mouse_wheel",
+    description: "Scroll mouse wheel",
+    inputSchema: {
+      type: "object",
+      properties: {
+        deltaX: { type: "number" },
+        deltaY: { type: "number" },
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_click_at",
+    description: "Click at coordinates",
+    inputSchema: {
+      type: "object",
+      properties: {
+        x: { type: "number" },
+        y: { type: "number" },
+        tabId: { type: "number" },
+      },
+      required: ["x", "y"],
+    },
+  },
+
+  {
+    name: "chrome_heap_summary",
+    description: "Get heap summary",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_heap_query_objects",
+    description: "Query heap objects by class name",
+    inputSchema: {
+      type: "object",
+      properties: {
+        className: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["className"],
+    },
+  },
+
+  {
+    name: "chrome_cookie_clear",
+    description: "Clear all cookies for URL",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string" },
+      },
+      required: ["url"],
+    },
+  },
+  {
+    name: "chrome_localstorage_list",
+    description: "List localStorage keys",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_localstorage_delete",
+    description: "Delete localStorage key",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["key"],
+    },
+  },
+  {
+    name: "chrome_sessionstorage_set",
+    description: "Set sessionStorage value",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string" },
+        value: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["key", "value"],
+    },
+  },
+  {
+    name: "chrome_sessionstorage_get",
+    description: "Get sessionStorage value",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string" },
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_sessionstorage_delete",
+    description: "Delete sessionStorage key",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["key"],
+    },
+  },
+  {
+    name: "chrome_sessionstorage_clear",
+    description: "Clear sessionStorage",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_route_list",
+    description: "List mock routes",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_unroute",
+    description: "Remove mock route",
+    inputSchema: {
+      type: "object",
+      properties: {
+        urlPattern: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["urlPattern"],
+    },
+  },
+  {
+    name: "chrome_network_state_set",
+    description: "Set network offline/online state",
+    inputSchema: {
+      type: "object",
+      properties: {
+        offline: { type: "boolean" },
+        tabId: { type: "number" },
+      },
+      required: ["offline"],
+    },
+  },
+  {
+    name: "chrome_get_network_request",
+    description: "Get network request by ID",
+    inputSchema: {
+      type: "object",
+      properties: {
+        requestId: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["requestId"],
+    },
+  },
+  {
+    name: "chrome_indexeddb_list",
+    description: "List IndexedDB databases",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_indexeddb_clear",
+    description: "Clear IndexedDB object store",
+    inputSchema: {
+      type: "object",
+      properties: {
+        databaseName: { type: "string" },
+        objectStoreName: { type: "string" },
+        tabId: { type: "number" },
+      },
+      required: ["databaseName", "objectStoreName"],
+    },
+  },
+
+  {
+    name: "chrome_list_extensions",
+    description: "List installed extensions",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "chrome_enable_extension",
+    description: "Enable extension",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "chrome_disable_extension",
+    description: "Disable extension",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "chrome_reload_extension",
+    description: "Reload extension",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "chrome_trigger_extension_action",
+    description: "Trigger extension action",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "chrome_pwa_check",
+    description: "Check PWA installability",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_list_webmcp_tools",
+    description: "List WebMCP tools on page",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_execute_webmcp_tool",
+    description: "Execute WebMCP tool",
+    inputSchema: {
+      type: "object",
+      properties: {
+        toolName: { type: "string" },
+        params: { type: "object" },
+        tabId: { type: "number" },
+      },
+      required: ["toolName"],
+    },
+  },
+
+  {
+    name: "chrome_screenshot_element",
+    description: "Take screenshot of specific element. Returns base64 image.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string" },
+        format: { type: "string", enum: ["png", "jpeg"] },
+        quality: { type: "number" },
+        tabId: { type: "number" },
+      },
+      required: ["selector"],
+    },
+  },
+  {
+    name: "chrome_screenshot_fullpage",
+    description: "Take full page screenshot. Returns base64 image.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        format: { type: "string", enum: ["png", "jpeg"] },
+        quality: { type: "number" },
+        tabId: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "chrome_pdf_print",
+    description: "Print page to PDF. Returns base64 PDF.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        landscape: { type: "boolean" },
+        displayHeaderFooter: { type: "boolean" },
+        printBackground: { type: "boolean" },
+        scale: { type: "number" },
+        paperWidth: { type: "number" },
+        paperHeight: { type: "number" },
+        marginTop: { type: "number" },
+        marginBottom: { type: "number" },
+        marginLeft: { type: "number" },
+        marginRight: { type: "number" },
+        tabId: { type: "number" },
+      },
+    },
   }
 ];
 
@@ -1970,6 +2614,68 @@ const TOOL_GRAPH: Record<string, {
   chrome_get_cookies:       { description: "Get cookies for URL", intent: ["get cookies", "cookie value"], cost: "low" },
   chrome_get_local_storage: { description: "Read localStorage", intent: ["localstorage", "local storage value"], cost: "low" },
   chrome_get_history:       { description: "Search browser history", intent: ["browser history", "visited sites"], cost: "low" },
+
+  chrome_stealth_enable:    { description: "Anti-fingerprint spoofs with per-vector toggles", intent: ["stealth", "hide webdriver", "spoof canvas", "spoof webgl", "anti bot", "fingerprint", "hide automation"], cost: "medium", requires: ["chrome_debug_attach"], next: ["chrome_stealth_status", "chrome_navigate"] },
+  chrome_stealth_disable:   { description: "Remove stealth spoofs", intent: ["disable stealth", "remove spoof"], cost: "low" },
+  chrome_stealth_status:    { description: "Active stealth flags", intent: ["stealth status", "stealth config"], cost: "low" },
+
+  chrome_set_proxy:         { description: "Set browser proxy", intent: ["set proxy", "proxy server", "socks5", "http proxy", "rotate ip"], cost: "medium", next: ["chrome_get_proxy"] },
+  chrome_clear_proxy:       { description: "Clear proxy to direct", intent: ["clear proxy", "disable proxy", "direct connection"], cost: "low" },
+  chrome_get_proxy:         { description: "Get proxy config", intent: ["proxy status", "proxy config"], cost: "low" },
+  chrome_set_webrtc_policy: { description: "Prevent WebRTC IP leak", intent: ["webrtc leak", "hide ip", "webrtc policy"], cost: "low", requires: ["chrome_set_proxy"] },
+
+  chrome_handle_dialog:     { description: "Handle JavaScript dialog", intent: ["handle dialog", "alert", "confirm", "prompt"], cost: "low" },
+  chrome_fill_form:         { description: "Fill multiple form fields", intent: ["fill form", "batch fill", "fill multiple"], cost: "low" },
+  chrome_check:             { description: "Check checkbox", intent: ["check checkbox"], cost: "low" },
+  chrome_uncheck:           { description: "Uncheck checkbox", intent: ["uncheck checkbox"], cost: "low" },
+  chrome_wait_for_text:     { description: "Wait for text on page", intent: ["wait for text"], cost: "low" },
+  chrome_verify_element_visible: { description: "Verify element visible", intent: ["assert visible", "verify element"], cost: "low" },
+  chrome_verify_text_visible: { description: "Verify text visible", intent: ["assert text", "verify text"], cost: "low" },
+  chrome_verify_value:      { description: "Verify input value", intent: ["assert value", "verify value"], cost: "low" },
+  chrome_generate_locator:  { description: "Generate Playwright locator", intent: ["generate locator", "playwright code"], cost: "low" },
+
+  chrome_lighthouse_audit:  { description: "Heuristic audit for accessibility, SEO, best-practices", intent: ["lighthouse", "audit", "accessibility score", "seo score"], cost: "medium", requires: ["chrome_debug_attach"] },
+  chrome_performance_insight: { description: "Performance insights and Core Web Vitals", intent: ["performance insight", "core web vitals", "lcp", "cls"], cost: "medium", requires: ["chrome_debug_attach"] },
+
+  chrome_screencast_start:  { description: "Start screencast recording", intent: ["record video", "screencast"], cost: "medium", requires: ["chrome_debug_attach"] },
+  chrome_screencast_stop:   { description: "Stop screencast recording", intent: ["stop screencast"], cost: "low" },
+  chrome_resize_page:       { description: "Resize page viewport", intent: ["resize window", "viewport size"], cost: "low" },
+  chrome_emulate:           { description: "Unified device emulation", intent: ["emulate device", "unified emulate"], cost: "medium", requires: ["chrome_debug_attach"] },
+  chrome_mouse_move:        { description: "Move mouse to coordinates", intent: ["mouse move"], cost: "medium", requires: ["chrome_debug_attach"] },
+  chrome_mouse_down:        { description: "Press mouse button", intent: ["mouse down"], cost: "medium", requires: ["chrome_debug_attach"] },
+  chrome_mouse_up:          { description: "Release mouse button", intent: ["mouse up"], cost: "medium", requires: ["chrome_debug_attach"] },
+  chrome_mouse_wheel:       { description: "Scroll mouse wheel", intent: ["mouse wheel"], cost: "medium", requires: ["chrome_debug_attach"] },
+  chrome_click_at:          { description: "Click at coordinates", intent: ["click coordinate", "coordinate click"], cost: "medium", requires: ["chrome_debug_attach"] },
+
+  chrome_heap_summary:      { description: "Get heap summary", intent: ["heap summary", "memory usage"], cost: "medium", requires: ["chrome_debug_attach"] },
+  chrome_heap_query_objects: { description: "Query heap objects", intent: ["heap objects", "query objects"], cost: "medium", requires: ["chrome_debug_attach"] },
+
+  chrome_cookie_clear:      { description: "Clear cookies for URL", intent: ["clear cookies"], cost: "low" },
+  chrome_localstorage_list: { description: "List localStorage keys", intent: ["list localstorage"], cost: "low" },
+  chrome_localstorage_delete: { description: "Delete localStorage key", intent: ["delete localstorage"], cost: "low" },
+  chrome_sessionstorage_set: { description: "Set sessionStorage value", intent: ["set sessionstorage"], cost: "low" },
+  chrome_sessionstorage_get: { description: "Get sessionStorage value", intent: ["get sessionstorage"], cost: "low" },
+  chrome_sessionstorage_delete: { description: "Delete sessionStorage key", intent: ["delete sessionstorage"], cost: "low" },
+  chrome_sessionstorage_clear: { description: "Clear sessionStorage", intent: ["clear sessionstorage"], cost: "low" },
+  chrome_route_list:        { description: "List mock routes", intent: ["list mocks", "list routes"], cost: "low" },
+  chrome_unroute:           { description: "Remove mock route", intent: ["remove mock", "unroute"], cost: "low" },
+  chrome_network_state_set: { description: "Set network state", intent: ["offline", "network state"], cost: "low", requires: ["chrome_debug_attach"] },
+  chrome_get_network_request: { description: "Get network request by ID", intent: ["get request"], cost: "low", requires: ["chrome_debug_attach"] },
+  chrome_indexeddb_list:    { description: "List IndexedDB databases", intent: ["list indexeddb"], cost: "low" },
+  chrome_indexeddb_clear:   { description: "Clear IndexedDB store", intent: ["clear indexeddb"], cost: "low" },
+
+  chrome_list_extensions:   { description: "List installed extensions", intent: ["list extensions"], cost: "low" },
+  chrome_enable_extension:  { description: "Enable extension", intent: ["enable extension"], cost: "low" },
+  chrome_disable_extension: { description: "Disable extension", intent: ["disable extension"], cost: "low" },
+  chrome_reload_extension:  { description: "Reload extension", intent: ["reload extension"], cost: "low" },
+  chrome_trigger_extension_action: { description: "Trigger extension action", intent: ["trigger action"], cost: "low" },
+  chrome_pwa_check:         { description: "Check PWA installability", intent: ["pwa check", "installable"], cost: "medium", requires: ["chrome_debug_attach"] },
+  chrome_list_webmcp_tools: { description: "List WebMCP tools", intent: ["webmcp", "list tools"], cost: "low" },
+  chrome_execute_webmcp_tool: { description: "Execute WebMCP tool", intent: ["webmcp execute"], cost: "medium" },
+
+  chrome_screenshot_element: { description: "Screenshot of element", intent: ["screenshot element"], cost: "high", requires: ["chrome_debug_attach"] },
+  chrome_screenshot_fullpage: { description: "Full page screenshot", intent: ["full page screenshot"], cost: "high", requires: ["chrome_debug_attach"] },
+  chrome_pdf_print:         { description: "Print to PDF", intent: ["pdf print", "print page"], cost: "high", requires: ["chrome_debug_attach"] },
 };
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -2042,6 +2748,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     const method = name.replace(/^chrome_/, "");
     const result = await callExtension(method, args || {});
+    
+    if (name === "chrome_screenshot" || name === "chrome_screenshot_element" || name === "chrome_screenshot_fullpage") {
+      const match = String(result).match(/^data:image\/(png|jpeg);base64,(.+)$/);
+      if (match) {
+        return { content: [{ type: "image", data: match[2], mimeType: `image/${match[1]}` }] };
+      }
+    }
+    
+    if (name === "chrome_pdf_print") {
+      const match = String(result).match(/^data:application\/pdf;base64,(.+)$/);
+      if (match) {
+        return { content: [{ type: "resource", resource: { uri: "output.pdf", mimeType: "application/pdf", blob: match[1] } }] };
+      }
+    }
+    
     return { content: [{ type: "text", text: String(result) }] };
   } catch (error: any) {
     return {

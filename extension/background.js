@@ -4,6 +4,26 @@ let isConnected = false;
 let isEnabled = true;
 let reconnectTimer = null;
 let pingTimer = null;
+let self = self || {};
+self._debugLogs = {};
+self._debugNetwork = {};
+self._intercepted = {};
+self._mocks = {};
+self._headerMods = {};
+self._interceptPatterns = {};
+self._cast = {};
+self._stealth = {};
+self._heapChunks = {};
+self._traceEvents = {};
+self._securityState = {};
+self._responseModifiers = {};
+self._injectedCSS = {};
+self._pausedCallFrames = {};
+self._eventLog = {};
+self._mutationLog = {};
+self._wsFrames = {};
+self._debugListenerRegistered = false;
+self._debugAttachedTabs = {};
 
 chrome.alarms.create('keepAlive', { periodInMinutes: 0.3 }); // every 18s
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -762,52 +782,95 @@ function connect() {
         case 'debug_attach': {
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
           const tabId = params.tabId || tab.id;
-          await chrome.debugger.attach({ tabId }, '1.3');
-          // Enable Console and Network domains
+          if (self._debugAttachedTabs[tabId]) {
+            result = `Debugger already attached to tab ${tabId}`;
+            break;
+          }
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
           await chrome.debugger.sendCommand({ tabId }, 'Console.enable');
           await chrome.debugger.sendCommand({ tabId }, 'Network.enable');
           await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable');
           await chrome.debugger.sendCommand({ tabId }, 'Performance.enable');
           await chrome.debugger.sendCommand({ tabId }, 'Log.enable');
-          // Store captured events per tab
-          if (!self._debugLogs) self._debugLogs = {};
-          if (!self._debugNetwork) self._debugNetwork = {};
           self._debugLogs[tabId] = [];
           self._debugNetwork[tabId] = [];
-          chrome.debugger.onEvent.addListener((src, method, evtParams) => {
-            if (src.tabId !== tabId) return;
-            if (method === 'Console.messageAdded') {
-              self._debugLogs[tabId].push(evtParams.message);
-            }
-            if (method === 'Runtime.consoleAPICalled') {
-              self._debugLogs[tabId].push({
-                type: evtParams.type,
-                text: evtParams.args.map(a => a.value ?? a.description ?? '').join(' '),
-                timestamp: evtParams.timestamp,
-                stackTrace: evtParams.stackTrace
-              });
-            }
-            if (method === 'Log.entryAdded') {
-              self._debugLogs[tabId].push(evtParams.entry);
-            }
-            if (method === 'Network.requestWillBeSent') {
-              self._debugNetwork[tabId].push({
-                type: 'request', requestId: evtParams.requestId,
-                url: evtParams.request.url, method: evtParams.request.method,
-                headers: evtParams.request.headers,
-                postData: evtParams.request.postData,
-                timestamp: evtParams.timestamp
-              });
-            }
-            if (method === 'Network.responseReceived') {
-              const existing = self._debugNetwork[tabId].find(r => r.requestId === evtParams.requestId);
-              if (existing) {
-                existing.status = evtParams.response.status;
-                existing.responseHeaders = evtParams.response.headers;
-                existing.mimeType = evtParams.response.mimeType;
+          self._debugAttachedTabs[tabId] = true;
+          if (!self._debugListenerRegistered) {
+            chrome.debugger.onEvent.addListener((src, method, evtParams) => {
+              if (!src.tabId) return;
+              const tId = src.tabId;
+              if (method === 'Console.messageAdded') {
+                if (self._debugLogs[tId]) self._debugLogs[tId].push(evtParams.message);
               }
-            }
-          });
+              if (method === 'Runtime.consoleAPICalled') {
+                if (self._debugLogs[tId]) self._debugLogs[tId].push({
+                  type: evtParams.type,
+                  text: evtParams.args.map(a => a.value ?? a.description ?? '').join(' '),
+                  timestamp: evtParams.timestamp,
+                  stackTrace: evtParams.stackTrace
+                });
+              }
+              if (method === 'Log.entryAdded') {
+                if (self._debugLogs[tId]) self._debugLogs[tId].push(evtParams.entry);
+              }
+              if (method === 'Network.requestWillBeSent') {
+                if (self._debugNetwork[tId]) self._debugNetwork[tId].push({
+                  type: 'request', requestId: evtParams.requestId,
+                  url: evtParams.request.url, method: evtParams.request.method,
+                  headers: evtParams.request.headers,
+                  postData: evtParams.request.postData,
+                  timestamp: evtParams.timestamp
+                });
+              }
+              if (method === 'Network.responseReceived') {
+                if (self._debugNetwork[tId]) {
+                  const existing = self._debugNetwork[tId].find(r => r.requestId === evtParams.requestId);
+                  if (existing) {
+                    existing.status = evtParams.response.status;
+                    existing.responseHeaders = evtParams.response.headers;
+                    existing.mimeType = evtParams.response.mimeType;
+                  }
+                }
+              }
+              if (method === 'Fetch.requestPaused') {
+                const mock = (self._mocks || {})[evtParams.request.url];
+                const headerMod = self._headerMods[tId];
+                const interceptPattern = self._interceptPatterns[tId];
+                if (mock) {
+                  chrome.debugger.sendCommand({ tabId: tId }, 'Fetch.fulfillRequest', {
+                    requestId: evtParams.requestId,
+                    responseCode: mock.status || 200,
+                    responseHeaders: Object.entries(mock.headers || { 'Content-Type': 'application/json' })
+                      .map(([name, value]) => ({ name, value })),
+                    body: btoa(typeof mock.body === 'string' ? mock.body : JSON.stringify(mock.body))
+                  });
+                } else if (headerMod && interceptPattern && evtParams.request.url.includes(interceptPattern.replace('*', ''))) {
+                  const finalHeaders = headerMod.headersOrdered 
+                    ? headerMod.headersOrdered 
+                    : Object.entries({ ...evtParams.request.headers, ...headerMod.headers })
+                      .map(([name, value]) => ({ name, value }));
+                  chrome.debugger.sendCommand({ tabId: tId }, 'Fetch.continueRequest', {
+                    requestId: evtParams.requestId,
+                    headers: finalHeaders
+                  });
+                } else if (self._intercepted[tId]) {
+                  self._intercepted[tId].push(evtParams);
+                  chrome.debugger.sendCommand({ tabId: tId }, 'Fetch.continueRequest', {
+                    requestId: evtParams.requestId
+                  });
+                }
+              }
+              if (method === 'Page.screencastFrame') {
+                if (self._cast[tId]) {
+                  self._cast[tId].push(evtParams);
+                  chrome.debugger.sendCommand({ tabId: tId }, 'Page.screencastFrameAck', {
+                    sessionId: evtParams.sessionId
+                  });
+                }
+              }
+            });
+            self._debugListenerRegistered = true;
+          }
           result = `Debugger attached to tab ${tabId}`;
           break;
         }
@@ -815,7 +878,15 @@ function connect() {
         case 'debug_detach': {
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
           const tabId = params.tabId || tab.id;
-          await chrome.debugger.detach({ tabId });
+          await chrome.debugger.detach({ tabId }).catch(() => {});
+          delete self._debugLogs[tabId];
+          delete self._debugNetwork[tabId];
+          delete self._debugAttachedTabs[tabId];
+          delete self._intercepted[tabId];
+          delete self._headerMods[tabId];
+          delete self._interceptPatterns[tabId];
+          delete self._cast[tabId];
+          delete self._stealth[tabId];
           result = `Debugger detached from tab ${tabId}`;
           break;
         }
@@ -1142,27 +1213,8 @@ function connect() {
           await chrome.debugger.sendCommand({ tabId }, 'Fetch.enable', {
             patterns: [{ urlPattern: params.urlPattern || '*', requestStage: 'Request' }]
           });
-          if (!self._intercepted) self._intercepted = {};
           self._intercepted[tabId] = [];
-          chrome.debugger.onEvent.addListener((src, method, evtParams) => {
-            if (src.tabId !== tabId || method !== 'Fetch.requestPaused') return;
-            self._intercepted[tabId].push(evtParams);
-            // Auto-continue unless mock is set
-            const mock = (self._mocks || {})[evtParams.request.url];
-            if (mock) {
-              chrome.debugger.sendCommand({ tabId }, 'Fetch.fulfillRequest', {
-                requestId: evtParams.requestId,
-                responseCode: mock.status || 200,
-                responseHeaders: Object.entries(mock.headers || { 'Content-Type': 'application/json' })
-                  .map(([name, value]) => ({ name, value })),
-                body: btoa(typeof mock.body === 'string' ? mock.body : JSON.stringify(mock.body))
-              });
-            } else {
-              chrome.debugger.sendCommand({ tabId }, 'Fetch.continueRequest', {
-                requestId: evtParams.requestId
-              });
-            }
-          });
+          self._interceptPatterns[tabId] = params.urlPattern || '*';
           result = `Intercepting requests matching: ${params.urlPattern || '*'}`;
           break;
         }
@@ -1185,16 +1237,11 @@ function connect() {
           await chrome.debugger.sendCommand({ tabId }, 'Fetch.enable', {
             patterns: [{ urlPattern: params.urlPattern || '*', requestStage: 'Request' }]
           });
-          chrome.debugger.onEvent.addListener(async (src, method, evtParams) => {
-            if (src.tabId !== tabId || method !== 'Fetch.requestPaused') return;
-            const existingHeaders = evtParams.request.headers;
-            const mergedHeaders = Object.entries({ ...existingHeaders, ...(params.headers || {}) })
-              .map(([name, value]) => ({ name, value }));
-            await chrome.debugger.sendCommand({ tabId }, 'Fetch.continueRequest', {
-              requestId: evtParams.requestId,
-              headers: mergedHeaders
-            });
-          });
+          self._headerMods[tabId] = {
+            headers: params.headers || {},
+            headersOrdered: params.headersOrdered || null
+          };
+          self._interceptPatterns[tabId] = params.urlPattern || '*';
           result = `Headers modifier active for: ${params.urlPattern || '*'}`;
           break;
         }
@@ -2639,6 +2686,898 @@ function connect() {
           });
           
           result = `Node removed: ${params.selector}`;
+          break;
+        }
+
+        case 'stealth_enable': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const seed = params.seed || Math.floor(Math.random() * 1000000);
+          const flags = {
+            webdriver: params.webdriver !== false,
+            chromeRuntime: params.chromeRuntime !== false,
+            plugins: params.plugins !== false,
+            languages: params.languages !== false,
+            permissions: params.permissions !== false,
+            outerSize: params.outerSize !== false,
+            codecs: params.codecs !== false,
+            persist: params.persist !== false,
+            hardwareConcurrency: params.hardwareConcurrency,
+            deviceMemory: params.deviceMemory,
+            vendor: params.vendor,
+            platform: params.platform,
+            canvasNoise: params.canvasNoise,
+            webglVendor: params.webglVendor,
+            webglRenderer: params.webglRenderer,
+            webglVendorString: params.webglVendorString,
+            audioNoise: params.audioNoise,
+            fontSpoof: params.fontSpoof
+          };
+          const stealthFunc = (payload) => {
+            const { flags, seed } = payload;
+            const mulberry32 = (a) => {
+              return function() {
+                let t = a += 0x6D2B79F5;
+                t = Math.imul(t ^ t >>> 15, t | 1);
+                t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+              };
+            };
+            const rand = mulberry32(seed);
+            const maskToString = (fn, nativeFn) => {
+              Object.defineProperty(fn, 'toString', { value: () => nativeFn.toString(), writable: false, configurable: false });
+              Object.defineProperty(fn.toString, 'toString', { value: () => 'function toString() { [native code] }', writable: false, configurable: false });
+            };
+            if (flags.webdriver) {
+              Object.defineProperty(navigator, 'webdriver', { get: () => undefined, configurable: true });
+            }
+            if (flags.chromeRuntime) {
+              if (!window.chrome) window.chrome = {};
+              if (!window.chrome.runtime) window.chrome.runtime = {};
+            }
+            if (flags.plugins) {
+              const pluginCount = 3 + Math.floor(rand() * 3);
+              const plugins = { length: pluginCount, item: (i) => plugins[i] || null, namedItem: (n) => null, refresh: () => {} };
+              for (let i = 0; i < pluginCount; i++) plugins[i] = { name: `Plugin ${i}`, description: `Description ${i}`, filename: `plugin${i}.dll` };
+              Object.defineProperty(navigator, 'plugins', { get: () => plugins, configurable: true });
+              Object.defineProperty(navigator, 'mimeTypes', { get: () => ({ length: 0, item: () => null, namedItem: () => null }), configurable: true });
+            }
+            if (flags.languages) {
+              Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'], configurable: true });
+            }
+            if (flags.hardwareConcurrency) {
+              Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => flags.hardwareConcurrency, configurable: true });
+            }
+            if (flags.deviceMemory) {
+              Object.defineProperty(navigator, 'deviceMemory', { get: () => flags.deviceMemory, configurable: true });
+            }
+            if (flags.vendor) {
+              Object.defineProperty(navigator, 'vendor', { get: () => flags.vendor, configurable: true });
+            }
+            if (flags.platform) {
+              Object.defineProperty(navigator, 'platform', { get: () => flags.platform, configurable: true });
+            }
+            if (flags.canvasNoise) {
+              const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+              const origToBlob = HTMLCanvasElement.prototype.toBlob;
+              const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+              HTMLCanvasElement.prototype.toDataURL = function(...args) {
+                const ctx = this.getContext('2d');
+                if (ctx) { const imgData = ctx.getImageData(0, 0, this.width, this.height); for (let i = 0; i < imgData.data.length; i += 4) imgData.data[i] += Math.floor(rand() * 3) - 1; ctx.putImageData(imgData, 0, 0); }
+                return origToDataURL.apply(this, args);
+              };
+              HTMLCanvasElement.prototype.toBlob = function(...args) {
+                const ctx = this.getContext('2d');
+                if (ctx) { const imgData = ctx.getImageData(0, 0, this.width, this.height); for (let i = 0; i < imgData.data.length; i += 4) imgData.data[i] += Math.floor(rand() * 3) - 1; ctx.putImageData(imgData, 0, 0); }
+                return origToBlob.apply(this, args);
+              };
+              CanvasRenderingContext2D.prototype.getImageData = function(...args) {
+                const data = origGetImageData.apply(this, args);
+                for (let i = 0; i < data.data.length; i += 4) data.data[i] += Math.floor(rand() * 3) - 1;
+                return data;
+              };
+              maskToString(HTMLCanvasElement.prototype.toDataURL, origToDataURL);
+              maskToString(HTMLCanvasElement.prototype.toBlob, origToBlob);
+              maskToString(CanvasRenderingContext2D.prototype.getImageData, origGetImageData);
+            }
+            if (flags.webglVendor || flags.webglRenderer || flags.webglVendorString) {
+              const getParameterOrig = WebGLRenderingContext.prototype.getParameter;
+              const getParameterOrig2 = WebGL2RenderingContext.prototype.getParameter;
+              const handler = function(orig, param) {
+                if (param === 37445) return flags.webglVendorString || 'Intel Inc.';
+                if (param === 37446) return flags.webglRenderer || 'Intel Iris OpenGL Engine';
+                return orig.call(this, param);
+              };
+              WebGLRenderingContext.prototype.getParameter = function(param) { return handler.call(this, getParameterOrig, param); };
+              WebGL2RenderingContext.prototype.getParameter = function(param) { return handler.call(this, getParameterOrig2, param); };
+              maskToString(WebGLRenderingContext.prototype.getParameter, getParameterOrig);
+              maskToString(WebGL2RenderingContext.prototype.getParameter, getParameterOrig2);
+            }
+            if (flags.audioNoise) {
+              const origGetChannelData = AudioBuffer.prototype.getChannelData;
+              AudioBuffer.prototype.getChannelData = function(channel) {
+                const data = origGetChannelData.call(this, channel);
+                for (let i = 0; i < data.length; i++) data[i] += (rand() - 0.5) * 1e-7;
+                return data;
+              };
+              maskToString(AudioBuffer.prototype.getChannelData, origGetChannelData);
+            }
+            if (flags.fontSpoof) {
+              const origMeasureText = CanvasRenderingContext2D.prototype.measureText;
+              CanvasRenderingContext2D.prototype.measureText = function(text) {
+                const result = origMeasureText.call(this, text);
+                const origWidth = result.width;
+                Object.defineProperty(result, 'width', { get: () => origWidth + (rand() - 0.5) * 0.2 });
+                return result;
+              };
+              maskToString(CanvasRenderingContext2D.prototype.measureText, origMeasureText);
+            }
+            if (flags.codecs) {
+              const origCanPlayType = HTMLMediaElement.prototype.canPlayType;
+              HTMLMediaElement.prototype.canPlayType = function(type) {
+                if (!type) return '';
+                if (type.includes('mp4') || type.includes('h264') || type.includes('mp3')) return 'probably';
+                return origCanPlayType.call(this, type);
+              };
+              maskToString(HTMLMediaElement.prototype.canPlayType, origCanPlayType);
+            }
+            if (flags.permissions) {
+              const origQuery = Permissions.prototype.query;
+              Permissions.prototype.query = function(params) {
+                if (params.name === 'notifications') return Promise.resolve({ state: 'prompt', onchange: null });
+                return origQuery.call(this, params);
+              };
+              maskToString(Permissions.prototype.query, origQuery);
+            }
+            if (flags.outerSize) {
+              Object.defineProperty(window, 'outerWidth', { get: () => window.innerWidth || 1920, configurable: true });
+              Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight || 1080, configurable: true });
+            }
+            return 'Stealth enabled';
+          };
+          await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', func: stealthFunc, args: [{ flags, seed }] });
+          if (flags.persist) {
+            await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+            const scriptResult = await chrome.debugger.sendCommand({ tabId }, 'Page.addScriptToEvaluateOnNewDocument', { source: `(${stealthFunc.toString()})(${JSON.stringify({ flags, seed })})` });
+            if (!self._stealth[tabId]) self._stealth[tabId] = {};
+            self._stealth[tabId].flags = flags;
+            self._stealth[tabId].seed = seed;
+            self._stealth[tabId].scriptIds = self._stealth[tabId].scriptIds || [];
+            self._stealth[tabId].scriptIds.push(scriptResult.identifier);
+          } else {
+            self._stealth[tabId] = { flags, seed, scriptIds: [] };
+          }
+          result = JSON.stringify({ enabled: true, tabId, seed, flags });
+          break;
+        }
+
+        case 'stealth_disable': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const stealthData = self._stealth[tabId];
+          if (stealthData && stealthData.scriptIds && stealthData.scriptIds.length > 0) {
+            await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+            for (const scriptId of stealthData.scriptIds) {
+              await chrome.debugger.sendCommand({ tabId }, 'Page.removeScriptToEvaluateOnNewDocument', { identifier: scriptId }).catch(() => {});
+            }
+          }
+          delete self._stealth[tabId];
+          result = `Stealth disabled for tab ${tabId}`;
+          break;
+        }
+
+        case 'stealth_status': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          result = JSON.stringify(self._stealth[tabId] || { enabled: false });
+          break;
+        }
+
+        case 'set_proxy': {
+          let config;
+          if (params.mode === 'direct') {
+            config = { mode: 'direct' };
+          } else if (params.mode === 'pac_script') {
+            config = { mode: 'pac_script', pacScript: params.pacUrl ? { url: params.pacUrl } : { data: params.pacScript } };
+          } else {
+            const parseProxy = (str) => {
+              if (!str) return undefined;
+              const [host, port] = str.split(':');
+              return { scheme: 'http', host, port: parseInt(port) || 80 };
+            };
+            config = {
+              mode: 'fixed_servers',
+              rules: {
+                proxyForHttp: parseProxy(params.proxyForHttp),
+                proxyForHttps: parseProxy(params.proxyForHttps),
+                proxyForFtp: parseProxy(params.proxyForFtp),
+                bypassList: params.bypassList || []
+              }
+            };
+          }
+          await chrome.proxy.settings.set({ value: config, scope: 'regular' });
+          await chrome.storage.local.set({ proxyConfig: config });
+          result = `Proxy set: ${params.mode || 'fixed_servers'}`;
+          break;
+        }
+
+        case 'clear_proxy': {
+          await chrome.proxy.settings.set({ value: { mode: 'direct' }, scope: 'regular' });
+          await chrome.storage.local.remove('proxyConfig');
+          result = 'Proxy cleared';
+          break;
+        }
+
+        case 'get_proxy': {
+          const config = await chrome.proxy.settings.get({});
+          result = JSON.stringify(config);
+          break;
+        }
+
+        case 'set_webrtc_policy': {
+          await chrome.privacy.network.webRTCIPHandlingPolicy.set({ value: params.policy, scope: 'regular' });
+          result = `WebRTC policy set: ${params.policy}`;
+          break;
+        }
+
+        case 'get_webrtc_policy': {
+          const policy = await chrome.privacy.network.webRTCIPHandlingPolicy.get({});
+          result = JSON.stringify(policy);
+          break;
+        }
+
+        case 'handle_dialog': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          try {
+            await chrome.debugger.sendCommand({ tabId }, 'Page.handleJavaScriptDialog', {
+              accept: params.action === 'accept',
+              promptText: params.promptText || ''
+            });
+            result = `Dialog ${params.action}ed`;
+          } catch (e) {
+            throw new Error('No dialog');
+          }
+          break;
+        }
+
+        case 'fill_form': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const fields = params.fields || [];
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (fields, submitSelector) => {
+              fields.forEach(f => {
+                const el = document.querySelector(f.selector);
+                if (el) {
+                  el.value = f.value;
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+              });
+              if (submitSelector) {
+                const btn = document.querySelector(submitSelector);
+                if (btn) btn.click();
+              }
+              return fields.length;
+            },
+            args: [fields, params.submitSelector]
+          });
+          result = `Filled ${fields.length} fields`;
+          break;
+        }
+
+        case 'check': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (selector) => {
+              const el = document.querySelector(selector);
+              if (!el) throw new Error(`Element not found: ${selector}`);
+              el.checked = true;
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              return 'checked';
+            },
+            args: [params.selector]
+          });
+          result = `Checked: ${params.selector}`;
+          break;
+        }
+
+        case 'uncheck': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (selector) => {
+              const el = document.querySelector(selector);
+              if (!el) throw new Error(`Element not found: ${selector}`);
+              el.checked = false;
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              return 'unchecked';
+            },
+            args: [params.selector]
+          });
+          result = `Unchecked: ${params.selector}`;
+          break;
+        }
+
+        case 'wait_for_text': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const timeout = params.timeout || 5000;
+          const [{ result: found }] = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (query, exact, timeout) => {
+              return new Promise((resolve) => {
+                const startTime = Date.now();
+                const check = () => {
+                  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                  let node;
+                  while ((node = walker.nextNode())) {
+                    const text = node.textContent.trim();
+                    const match = exact ? text === query : text.toLowerCase().includes(query.toLowerCase());
+                    if (match) { resolve(true); return; }
+                  }
+                  if (Date.now() - startTime > timeout) { resolve(false); return; }
+                  setTimeout(check, 100);
+                };
+                check();
+              });
+            },
+            args: [params.query, params.exact || false, timeout]
+          });
+          if (!found) throw new Error('Text not found within timeout');
+          result = 'Found';
+          break;
+        }
+
+        case 'verify_element_visible': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const [{ result: info }] = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (selector) => {
+              const el = document.querySelector(selector);
+              if (!el) return { visible: false, rect: null };
+              const rect = el.getBoundingClientRect();
+              const style = getComputedStyle(el);
+              const visible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+              return { visible, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } };
+            },
+            args: [params.selector]
+          });
+          result = JSON.stringify(info);
+          break;
+        }
+
+        case 'verify_text_visible': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const [{ result: info }] = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (query) => {
+              const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+              const items = [];
+              let node;
+              while ((node = walker.nextNode())) {
+                const text = node.textContent.trim();
+                if (text.toLowerCase().includes(query.toLowerCase())) {
+                  const parent = node.parentElement;
+                  if (parent) {
+                    const style = getComputedStyle(parent);
+                    if (style.display !== 'none' && style.visibility !== 'hidden') {
+                      items.push(text);
+                    }
+                  }
+                }
+              }
+              return { visible: items.length > 0, matches: items.length };
+            },
+            args: [params.query]
+          });
+          result = JSON.stringify(info);
+          break;
+        }
+
+        case 'verify_value': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const [{ result: info }] = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (selector, expected) => {
+              const el = document.querySelector(selector);
+              if (!el) return { pass: false, actual: null };
+              const actual = el.value || '';
+              return { pass: actual === expected, actual };
+            },
+            args: [params.selector, params.expected]
+          });
+          result = JSON.stringify(info);
+          break;
+        }
+
+        case 'generate_locator': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const [{ result: info }] = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (selector) => {
+              const el = document.querySelector(selector);
+              if (!el) return `page.locator('${selector}')`;
+              const tag = el.tagName.toLowerCase();
+              const role = el.getAttribute('role') || (tag === 'button' ? 'button' : tag === 'input' ? 'textbox' : tag === 'a' ? 'link' : null);
+              if (role && el.innerText) return `page.getByRole('${role}', { name: '${el.innerText.trim().substring(0, 50)}' })`;
+              return `page.locator('${selector}')`;
+            },
+            args: [params.selector]
+          });
+          result = info;
+          break;
+        }
+
+        case 'lighthouse_audit': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          const metrics = await chrome.debugger.sendCommand({ tabId }, 'Performance.getMetrics').catch(() => ({ metrics: [] }));
+          const url = (await chrome.tabs.get(tabId)).url;
+          const failed = [];
+          let accessibilityScore = 100;
+          let seoScore = 100;
+          let bestPracticesScore = 100;
+          const [{ result: auditResult }] = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => {
+              const issues = [];
+              const doc = document;
+              if (!doc.querySelector('meta[name="viewport"]')) issues.push({ id: 'viewport', detail: 'Missing viewport meta tag' });
+              if (!doc.querySelector('meta[name="description"]')) issues.push({ id: 'meta-description', detail: 'Missing meta description' });
+              if (!doc.documentElement.getAttribute('lang')) issues.push({ id: 'lang', detail: 'Missing lang attribute' });
+              doc.querySelectorAll('img').forEach(img => { if (!img.alt) issues.push({ id: 'img-alt', detail: `Image missing alt: ${img.src}` }); });
+              doc.querySelectorAll('a').forEach(a => { if (!a.innerText && !a.getAttribute('aria-label')) issues.push({ id: 'a-label', detail: `Link without text: ${a.href}` }); });
+              return issues;
+            }
+          });
+          failed.push(...(auditResult || []));
+          accessibilityScore = Math.max(0, 100 - failed.length * 10);
+          seoScore = Math.max(0, 100 - failed.filter(f => ['viewport', 'meta-description'].includes(f.id)).length * 20);
+          bestPracticesScore = Math.max(0, 100 - failed.filter(f => f.id === 'lang').length * 10);
+          result = JSON.stringify({ url, device: params.device || 'desktop', scores: { accessibility: accessibilityScore, seo: seoScore, bestPractices: bestPracticesScore }, failed, passed: Math.max(0, 10 - failed.length) });
+          break;
+        }
+
+        case 'performance_insight': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          const metrics = await chrome.debugger.sendCommand({ tabId }, 'Performance.getMetrics').catch(() => ({ metrics: [] }));
+          const heap = await chrome.debugger.sendCommand({ tabId }, 'Runtime.getHeapUsage').catch(() => ({ usedSize: 0, totalSize: 0 }));
+          const networkLog = self._debugNetwork[tabId] || [];
+          const metricMap = {};
+          (metrics.metrics || []).forEach(m => { metricMap[m.name] = m.value; });
+          result = JSON.stringify({
+            LCP_estimate: metricMap.LargestContentfulPaint || 0,
+            CLS_risk: metricMap.LayoutDuration || 0,
+            JSHeapUsed: heap.usedSize || metricMap.JSHeapUsedSize || 0,
+            DOMNodes: metricMap.Nodes || 0,
+            requests: networkLog.length
+          });
+          break;
+        }
+
+        case 'screencast_start': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          self._cast[tabId] = [];
+          await chrome.debugger.sendCommand({ tabId }, 'Page.startScreencast', { format: 'jpeg', quality: params.quality || 80, everyNthFrame: 2 });
+          result = `Screencast started for tab ${tabId}`;
+          break;
+        }
+
+        case 'screencast_stop': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.sendCommand({ tabId }, 'Page.stopScreencast').catch(() => {});
+          const frames = self._cast[tabId] || [];
+          const preview = frames.length > 0 ? ('data:image/jpeg;base64,' + frames[0].data).substring(0, 200) : '';
+          delete self._cast[tabId];
+          result = JSON.stringify({ frames: frames.length, preview });
+          break;
+        }
+
+        case 'resize_page': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const win = await chrome.windows.get((await chrome.tabs.get(tabId)).windowId);
+          await chrome.windows.update(win.id, { width: params.width, height: params.height });
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          await chrome.debugger.sendCommand({ tabId }, 'Emulation.setDeviceMetricsOverride', { width: params.width, height: params.height, deviceScaleFactor: 1, mobile: false });
+          result = `Resized to ${params.width}x${params.height}`;
+          break;
+        }
+
+        case 'emulate': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          const parts = [];
+          if (params.viewportWidth && params.viewportHeight) {
+            await chrome.debugger.sendCommand({ tabId }, 'Emulation.setDeviceMetricsOverride', { width: params.viewportWidth, height: params.viewportHeight, deviceScaleFactor: params.deviceScaleFactor || 1, mobile: params.mobile || false });
+            parts.push(`viewport ${params.viewportWidth}x${params.viewportHeight}`);
+          }
+          if (params.userAgent) {
+            await chrome.debugger.sendCommand({ tabId }, 'Emulation.setUserAgentOverride', { userAgent: params.userAgent });
+            parts.push(`UA: ${params.userAgent.substring(0, 30)}...`);
+          }
+          if (params.locale) {
+            await chrome.debugger.sendCommand({ tabId }, 'Emulation.setLocaleOverride', { locale: params.locale });
+            parts.push(`locale: ${params.locale}`);
+          }
+          if (params.timezone) {
+            await chrome.debugger.sendCommand({ tabId }, 'Emulation.setTimezoneOverride', { timezoneId: params.timezone });
+            parts.push(`timezone: ${params.timezone}`);
+          }
+          if (params.colorScheme) {
+            await chrome.debugger.sendCommand({ tabId }, 'Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: params.colorScheme }] });
+            parts.push(`colorScheme: ${params.colorScheme}`);
+          }
+          result = `Emulated: ${parts.join(', ')}`;
+          break;
+        }
+
+        case 'mouse_move': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: params.x, y: params.y });
+          result = `Mouse moved to ${params.x}, ${params.y}`;
+          break;
+        }
+
+        case 'mouse_down': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: 0, y: 0, button: params.button || 'left', clickCount: 1 });
+          result = `Mouse ${params.button || 'left'} down`;
+          break;
+        }
+
+        case 'mouse_up': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: 0, y: 0, button: params.button || 'left', clickCount: 1 });
+          result = `Mouse ${params.button || 'left'} up`;
+          break;
+        }
+
+        case 'mouse_wheel': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseWheelEvent', { type: 'mouseWheel', x: 0, y: 0, deltaX: params.deltaX || 0, deltaY: params.deltaY || 0 });
+          result = `Mouse wheel ${params.deltaX || 0}, ${params.deltaY || 0}`;
+          break;
+        }
+
+        case 'click_at': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: params.x, y: params.y, button: 'left', clickCount: 1 });
+          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: params.x, y: params.y, button: 'left', clickCount: 1 });
+          result = `Clicked at ${params.x}, ${params.y}`;
+          break;
+        }
+
+        case 'heap_summary': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          const heap = await chrome.debugger.sendCommand({ tabId }, 'Runtime.getHeapUsage').catch(() => null);
+          const profile = await chrome.debugger.sendCommand({ tabId }, 'HeapProfiler.getSamplingProfile').catch(() => null);
+          result = JSON.stringify({ heapUsage: heap, hasProfile: !!profile });
+          break;
+        }
+
+        case 'heap_query_objects': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable');
+          const proto = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', { expression: params.className + '.prototype', returnByValue: false });
+          if (!proto.result || !proto.result.objectId) throw new Error('Class not found');
+          const objects = await chrome.debugger.sendCommand({ tabId }, 'Runtime.queryObjects', { prototypeObjectId: proto.result.objectId });
+          const props = await chrome.debugger.sendCommand({ tabId }, 'Runtime.getProperties', { objectId: objects.objects.objectId, ownProperties: true });
+          result = JSON.stringify(props.result.slice(0, 20));
+          break;
+        }
+
+        case 'cookie_clear': {
+          const cookies = await chrome.cookies.getAll({ url: params.url });
+          for (const c of cookies) {
+            await chrome.cookies.remove({ url: params.url, name: c.name });
+          }
+          result = `Cleared ${cookies.length} cookies`;
+          break;
+        }
+
+        case 'localstorage_list': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const [{ result: keys }] = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => Object.keys(localStorage)
+          });
+          result = JSON.stringify(keys);
+          break;
+        }
+
+        case 'localstorage_delete': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (key) => localStorage.removeItem(key),
+            args: [params.key]
+          });
+          result = `Deleted: ${params.key}`;
+          break;
+        }
+
+        case 'sessionstorage_set': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (key, value) => sessionStorage.setItem(key, value),
+            args: [params.key, params.value]
+          });
+          result = `Session storage set: ${params.key}`;
+          break;
+        }
+
+        case 'sessionstorage_get': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const [{ result: val }] = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (key) => sessionStorage.getItem(key),
+            args: [params.key]
+          });
+          result = val || '';
+          break;
+        }
+
+        case 'sessionstorage_delete': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (key) => sessionStorage.removeItem(key),
+            args: [params.key]
+          });
+          result = `Deleted session: ${params.key}`;
+          break;
+        }
+
+        case 'sessionstorage_clear': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => sessionStorage.clear()
+          });
+          result = 'Session storage cleared';
+          break;
+        }
+
+        case 'route_list': {
+          result = JSON.stringify(Object.keys(self._mocks || {}));
+          break;
+        }
+
+        case 'unroute': {
+          delete self._mocks[params.urlPattern];
+          const remaining = Object.keys(self._mocks);
+          if (remaining.length === 0) {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            const tabId = params.tabId || tab.id;
+            await chrome.debugger.sendCommand({ tabId }, 'Fetch.disable').catch(() => {});
+          }
+          result = `Unrouted: ${params.urlPattern}`;
+          break;
+        }
+
+        case 'network_state_set': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          await chrome.debugger.sendCommand({ tabId }, 'Network.emulateNetworkConditions', { offline: params.offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+          result = `Network ${params.offline ? 'offline' : 'online'}`;
+          break;
+        }
+
+        case 'get_network_request': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const requests = self._debugNetwork[tabId] || [];
+          const req = requests.find(r => r.requestId === params.requestId);
+          if (!req) throw new Error('Request not found');
+          result = JSON.stringify(req);
+          break;
+        }
+
+        case 'indexeddb_list': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const [{ result: dbs }] = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => indexedDB.databases()
+          });
+          result = JSON.stringify(dbs || []);
+          break;
+        }
+
+        case 'indexeddb_clear': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (dbName, storeName) => {
+              return new Promise((resolve, reject) => {
+                const req = indexedDB.open(dbName);
+                req.onsuccess = () => {
+                  const db = req.result;
+                  const tx = db.transaction(storeName, 'readwrite');
+                  const store = tx.objectStore(storeName);
+                  store.clear();
+                  tx.oncomplete = () => resolve('Cleared');
+                  tx.onerror = () => reject(tx.error);
+                };
+                req.onerror = () => reject(req.error);
+              });
+            },
+            args: [params.databaseName, params.objectStoreName]
+          });
+          result = 'Cleared';
+          break;
+        }
+
+        case 'list_extensions': {
+          const extensions = await chrome.management.getAll();
+          result = JSON.stringify(extensions.map(e => ({ id: e.id, name: e.name, enabled: e.enabled, type: e.type })));
+          break;
+        }
+
+        case 'enable_extension': {
+          await chrome.management.setEnabled(params.id, true);
+          result = `Extension enabled: ${params.id}`;
+          break;
+        }
+
+        case 'disable_extension': {
+          await chrome.management.setEnabled(params.id, false);
+          result = `Extension disabled: ${params.id}`;
+          break;
+        }
+
+        case 'reload_extension': {
+          await chrome.management.setEnabled(params.id, false);
+          await chrome.management.setEnabled(params.id, true);
+          result = `Extension reloaded: ${params.id}`;
+          break;
+        }
+
+        case 'trigger_extension_action': {
+          const ext = await chrome.management.get(params.id);
+          result = JSON.stringify({ note: 'Action not programmatically triggerable, info returned', extension: { id: ext.id, name: ext.name } });
+          break;
+        }
+
+        case 'pwa_check': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          const errors = await chrome.debugger.sendCommand({ tabId }, 'Page.getInstallabilityErrors').catch(() => ({ installabilityErrors: [] }));
+          result = JSON.stringify(errors);
+          break;
+        }
+
+        case 'list_webmcp_tools': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const [{ result: tools }] = await chrome.scripting.executeScript({
+            target: { tabId },
+            world: 'MAIN',
+            func: () => {
+              if (navigator.modelContext) return Object.keys(navigator.modelContext);
+              if (window.__webmcp) return Object.keys(window.__webmcp);
+              return [];
+            }
+          });
+          result = JSON.stringify(tools || []);
+          break;
+        }
+
+        case 'execute_webmcp_tool': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          const [{ result: toolResult }] = await chrome.scripting.executeScript({
+            target: { tabId },
+            world: 'MAIN',
+            func: (toolName, params) => {
+              const registry = navigator.modelContext || window.__webmcp;
+              if (!registry || !registry[toolName]) throw new Error('WebMCP not available on page');
+              return registry[toolName](params);
+            },
+            args: [params.toolName, params.params || {}]
+          });
+          result = JSON.stringify(toolResult);
+          break;
+        }
+
+        case 'screenshot_element': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          const [{ result: rect }] = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (selector) => {
+              const el = document.querySelector(selector);
+              if (!el) throw new Error(`Element not found: ${selector}`);
+              const r = el.getBoundingClientRect();
+              return { x: r.x, y: r.y, width: r.width, height: r.height };
+            },
+            args: [params.selector]
+          });
+          const screenshot = await chrome.debugger.sendCommand({ tabId }, 'Page.captureScreenshot', {
+            format: params.format || 'png',
+            quality: params.quality || 90,
+            clip: { x: rect.x, y: rect.y, width: rect.width, height: rect.height, scale: 1 }
+          });
+          result = 'data:image/' + (params.format || 'png') + ';base64,' + screenshot.data;
+          break;
+        }
+
+        case 'screenshot_fullpage': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          const metrics = await chrome.debugger.sendCommand({ tabId }, 'Page.getLayoutMetrics');
+          const width = metrics.contentSize.width;
+          const height = metrics.contentSize.height;
+          await chrome.debugger.sendCommand({ tabId }, 'Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+          const screenshot = await chrome.debugger.sendCommand({ tabId }, 'Page.captureScreenshot', { format: params.format || 'png', quality: params.quality || 90, captureBeyondViewport: true });
+          await chrome.debugger.sendCommand({ tabId }, 'Emulation.clearDeviceMetricsOverride');
+          result = 'data:image/' + (params.format || 'png') + ';base64,' + screenshot.data;
+          break;
+        }
+
+        case 'pdf_print': {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = params.tabId || tab.id;
+          await chrome.debugger.attach({ tabId }, '1.3').catch(() => {});
+          const pdf = await chrome.debugger.sendCommand({ tabId }, 'Page.printToPDF', {
+            landscape: params.landscape || false,
+            displayHeaderFooter: params.displayHeaderFooter || false,
+            printBackground: params.printBackground !== false,
+            scale: params.scale || 1,
+            paperWidth: params.paperWidth || 8.5,
+            paperHeight: params.paperHeight || 11,
+            marginTop: params.marginTop || 0.4,
+            marginBottom: params.marginBottom || 0.4,
+            marginLeft: params.marginLeft || 0.4,
+            marginRight: params.marginRight || 0.4,
+            preferCSSPageSize: true
+          });
+          result = 'data:application/pdf;base64,' + pdf.data;
           break;
         }
 
