@@ -4,7 +4,6 @@ let isConnected = false;
 let isEnabled = true;
 let reconnectTimer = null;
 let pingTimer = null;
-let self = self || {};
 self._debugLogs = {};
 self._debugNetwork = {};
 self._intercepted = {};
