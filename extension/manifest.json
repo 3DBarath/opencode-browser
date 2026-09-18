@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Opencode Brower",
-  "version": "0.0.6",
-  "version_name": "opencode 0.0.6",
+  "version": "0.0.6a",
+  "version_name": "opencode 0.0.6a",
   "description": "Opencode peak =) by mytai20100",
   "permissions": [
     "tabs",
