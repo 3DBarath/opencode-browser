@@ -8,7 +8,7 @@ import {
 import { WebSocketServer, WebSocket } from "ws";
 
 const WS_PORT = parseInt(process.env.OPENCODE_BROWSER_PORT || "3002", 10);
-const WS_HOST = process.env.OPENCODE_BROWSER_HOST || "127.0.0.1";
+const WS_HOST = process.env.OPENCODE_BROWSER_HOST || "0.0.0.0";
 
 const wss = new WebSocketServer({
   port: WS_PORT,
@@ -62,24 +62,37 @@ wss.on("connection", (ws) => {
       // Ignore keep-alive pings from extension
       if (msg.type === "ping") return;
       if (msg.type === "hello" && msg.clientId) {
-        clients.set(msg.clientId, {
+        const clientId = String(msg.clientId);
+        const previous = clients.get(clientId);
+        // Same clientId reconnected on a new socket:drop the stale mapping and close the old socket so it cant leak or clobber the new entry.
+        if (previous && previous.ws !== ws) {
+          wsToClient.delete(previous.ws);
+          try { previous.ws.terminate(); } catch {}
+        }
+        clients.set(clientId, {
           ws,
           label: String(msg.label || ""),
           version: String(msg.version || ""),
           connectedAt: Date.now(),
         });
-        wsToClient.set(ws, msg.clientId);
-        console.error(`Extension connected: ${msg.label || "(unnamed)"} [${String(msg.clientId).slice(0, 8)}] (${clients.size} total)`);
-        return;
+        wsToClient.set(ws, clientId);
+        console.error(`Extension connected: ${msg.label || "(unnamed)"} [${clientId.slice(0, 8)}] (${clients.size} total)`);  
+      return;
       }
     } catch (e) {}
   });
   ws.on("close", () => {
     const id = wsToClient.get(ws);
     if (id) {
-      clients.delete(id);
+      // Only remove the registry entry if it still points at THIS socket.
+      // A late close from a replaced socket must not evict the new one.
+      if (clients.get(id)?.ws === ws) {
+        clients.delete(id);
+        console.error(`Extension disconnected: [${String(id).slice(0, 8)}] (${clients.size} remaining)`);
+      } else {
+        console.error(`Stale extension socket closed: [${String(id).slice(0, 8)}]`);
+      }
       wsToClient.delete(ws);
-      console.error(`Extension disconnected: [${String(id).slice(0, 8)}] (${clients.size} remaining)`);
     } else {
       console.error("Extension disconnected (unidentified)");
     }
@@ -92,7 +105,9 @@ const heartbeat = setInterval(() => {
     const ws = m.ws;
     if ((ws as any).isAlive === false) {
       console.error(`Dropping dead connection: [${String(id).slice(0, 8)}]`);
-      clients.delete(id);
+      if (clients.get(id)?.ws === ws) {
+        clients.delete(id);
+      }
       wsToClient.delete(ws);
       try { ws.terminate(); } catch {}
       continue;
